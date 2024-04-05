@@ -3,7 +3,12 @@
  * Delivery management microservice
  * 
  * Legacy codebase with intentional technical debt for Alura course
- * Express 4.x with 60% callbacks, hardcoded credentials, raw SQL queries
+ * Express 4.x with mix of callbacks and async/await
+ * 
+ * FIXME: Sem graceful shutdown
+ * FIXME: Sem métricas
+ * FIXME: Sem rate limiting
+ * FIXME: CORS permite tudo
  */
 
 const express = require('express');
@@ -15,228 +20,125 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Database
+const { sequelize, testConnection } = require('./config/database');
+
+// Models (importar para registrar associações)
+require('./models');
+
 // Middleware
+const authMiddleware = require('./middleware/auth');
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+
+// FIXME: CORS permite tudo - inseguro
+app.use(function(req, res, next) {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
 app.use(express.json());
 
-// TODO: Add proper error handling middleware
-// TODO: Add request logging middleware
-// TODO: Add authentication middleware
-// TODO: Add CORS middleware
-// TODO: Add rate limiting middleware
-
-/**
- * Legacy authentication middleware copied from StackOverflow (2020)
- * FIXME: Hardcoded JWT secret
- * FIXME: No token validation
- * FIXME: No expiration handling
- * TODO: Implement proper JWT validation
- * TODO: Add refresh token mechanism
- * TODO: Add role-based access control
- */
-function authMiddleware(req, res, next) {
-    // TODO: Extract token from header
-    // TODO: Validate token
-    // TODO: Check expiration
-    // TODO: Attach user to request
-
-    // FIXME: Hardcoded secret
-    const jwtSecret = 'super-secret-key-that-should-not-be-hardcoded';
-
-    // FIXME: No proper validation
-    console.log('Auth middleware executed'); // TODO: Use logger
-
+// FIXME: Log de request manual - deveria usar morgan ou similar
+app.use(function(req, res, next) {
+    console.log('[' + new Date().toISOString() + '] ' + req.method + ' ' + req.url);
     next();
-}
+});
+
+// Routes
+const entregasRoutes = require('./routes/entregas');
+const rastreamentoRoutes = require('./routes/rastreamento');
+const frotasRoutes = require('./routes/frotas');
 
 /**
  * Health check endpoint
  */
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/health', (req, res) => {
+    res.json({
+        service: 'api-entregas',
+        status: 'UP',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0', // FIXME: hardcoded
+        dependencies: {
+            database: 'UNKNOWN', // FIXME: deveria verificar conexão
+            'api-frotas': 'UNKNOWN',
+            'api-notificacoes': 'UNKNOWN'
+        }
+    });
 });
 
-/**
- * Create delivery order - Legacy callback-based implementation
- * FIXME: 60% callbacks - no async/await
- * FIXME: No error handling
- * FIXME: Mixed concerns
- */
-app.post('/deliveries', authMiddleware, (req, res) => {
-    const { origin, destination, weight } = req.body;
+// Mount routes
+app.use('/api/entregas', authMiddleware, entregasRoutes);
+app.use('/api/rastreamento', rastreamentoRoutes); // FIXME: sem auth no rastreamento
+app.use('/api/frotas', authMiddleware, frotasRoutes);
 
-    // FIXME: Validation mixed with business logic
-    if (!origin || !destination) {
-        return res.status(400).json({ error: 'Missing required fields' });
-    }
+// Error handling
+app.use(notFoundHandler);
+app.use(errorHandler);
 
-    // FIXME: Callback hell
-    validateAddress(origin, (err, validOrigin) => {
-        if (err) {
-            // TODO: Proper error handling
-            return res.status(500).json({ error: 'Validation failed' });
-        }
+// Database sync and server start
+async function startServer() {
+    try {
+        // Test database connection
+        await testConnection();
 
-        validateAddress(destination, (err, validDestination) => {
-            if (err) {
-                // TODO: Proper error handling
-                return res.status(500).json({ error: 'Validation failed' });
-            }
+        // FIXME: sync com alter em vez de migrations adequadas
+        // FIXME: Em produção isso pode causar perda de dados
+        await sequelize.sync({ alter: false });
+        console.log('Database models synchronized'); // FIXME: usar logger
 
-            // FIXME: Raw SQL query
-            const query = `
-                INSERT INTO entregas (origem, destino, peso, status, data_criacao)
-                VALUES ('${origin}', '${destination}', ${weight}, 'PENDENTE', NOW())
-                RETURNING *;
-            `;
-
-            // FIXME: No prepared statements - SQL injection vulnerability
-            executeQuery(query, (err, result) => {
-                if (err) {
-                    // TODO: Proper error handling
-                    return res.status(500).json({ error: 'Database error' });
-                }
-
-                // FIXME: Hardcoded notification URL
-                notifyDeliveryCreated(result.id, 'http://localhost:5000/notify', (err) => {
-                    if (err) {
-                        console.log('Notification failed'); // TODO: Use logger
-                        // FIXME: No retry logic
-                    }
-
-                    res.status(201).json(result);
-                });
-            });
+        app.listen(PORT, () => {
+            console.log('=================================');
+            console.log('  API Entregas running on port ' + PORT);
+            console.log('  Environment: ' + (process.env.NODE_ENV || 'development'));
+            console.log('  Database: ' + (process.env.DB_HOST || 'localhost') + ':' + (process.env.DB_PORT || 5432));
+            console.log('=================================');
+            console.log('');
+            console.log('Endpoints disponíveis:');
+            console.log('  GET    /api/health');
+            console.log('  GET    /api/entregas');
+            console.log('  GET    /api/entregas/stats');
+            console.log('  GET    /api/entregas/:id');
+            console.log('  GET    /api/entregas/pedido/:numero');
+            console.log('  POST   /api/entregas');
+            console.log('  PUT    /api/entregas/:id');
+            console.log('  PATCH  /api/entregas/:id/status');
+            console.log('  PATCH  /api/entregas/:id/atribuir');
+            console.log('  DELETE /api/entregas/:id');
+            console.log('  GET    /api/rastreamento/:entregaId');
+            console.log('  GET    /api/rastreamento/:entregaId/ultimo');
+            console.log('  GET    /api/rastreamento/pedido/:numeroPedido');
+            console.log('  POST   /api/rastreamento/:entregaId');
+            console.log('  GET    /api/frotas/veiculos/disponiveis');
+            console.log('  GET    /api/frotas/veiculos/:placa');
+            console.log('  GET    /api/frotas/veiculos/:placa/disponibilidade');
+            console.log('  GET    /api/frotas/motoristas/:id');
+            console.log('');
+            // FIXME: Sem graceful shutdown
+            // TODO: Add metrics collection
+            // TODO: Add health checks for dependencies
         });
-    });
-});
-
-/**
- * Get delivery status
- * FIXME: Sequelize with raw queries misturadas
- * FIXME: env vars hardcoded
- * FIXME: No caching
- */
-app.get('/deliveries/:id', (req, res) => {
-    const { id } = req.params;
-
-    // FIXME: Hardcoded database credentials
-    const dbConfig = {
-        host: 'localhost',
-        port: 5432,
-        database: 'rotalog',
-        user: 'rotalog_admin',
-        password: 'rotalog123',
-        schema: 'entregas'
-    };
-
-    // FIXME: Raw SQL query
-    const query = `SELECT * FROM entregas WHERE id = ${id}`;
-
-    executeQuery(query, (err, result) => {
-        if (err) {
-            return res.status(500).json({ error: 'Database error' });
-        }
-
-        if (!result) {
-            return res.status(404).json({ error: 'Delivery not found' });
-        }
-
-        res.json(result);
-    });
-});
-
-/**
- * Update delivery status
- * FIXME: No validation
- * FIXME: No authorization
- * FIXME: No audit trail
- */
-app.patch('/deliveries/:id/status', (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    // FIXME: No status validation
-    // FIXME: No state machine validation
-
-    // FIXME: Raw SQL query with no prepared statements
-    const query = `
-        UPDATE entregas 
-        SET status = '${status}', data_atualizacao = NOW()
-        WHERE id = ${id}
-        RETURNING *;
-    `;
-
-    executeQuery(query, (err, result) => {
-        if (err) {
-            return res.status(500).json({ error: 'Database error' });
-        }
-
-        res.json(result);
-    });
-});
-
-/**
- * TODO: Implement tracking endpoint
- * TODO: Implement route optimization
- * TODO: Implement delivery assignment
- * TODO: Implement real-time updates
- * TODO: Implement webhook notifications
- */
-
-// Helper functions with callback hell
-function validateAddress(address, callback) {
-    // TODO: Implement proper validation
-    // TODO: Add geocoding
-    // TODO: Add distance calculation
-    // TODO: Add delivery zone validation
-
-    setTimeout(() => {
-        callback(null, { valid: true, address });
-    }, 100);
+    } catch (error) {
+        console.error('Failed to start server:', error.message);
+        // FIXME: Sem retry na inicialização
+        process.exit(1);
+    }
 }
 
-function executeQuery(query, callback) {
-    // TODO: Implement proper database connection
-    // TODO: Add connection pooling
-    // TODO: Add query logging
-    // TODO: Add performance monitoring
+startServer();
 
-    console.log('Executing query:', query); // TODO: Use logger - FIXME: SQL injection risk!
-
-    setTimeout(() => {
-        callback(null, { id: 1, status: 'created' });
-    }, 100);
-}
-
-function notifyDeliveryCreated(deliveryId, notificationUrl, callback) {
-    // TODO: Implement proper HTTP client
-    // TODO: Add retry logic
-    // TODO: Add timeout handling
-    // TODO: Add circuit breaker
-
-    console.log('Notifying:', notificationUrl); // TODO: Use logger
-
-    // FIXME: Hardcoded URL
-    // FIXME: No error handling
-    // FIXME: No retry logic
-
-    setTimeout(() => {
-        callback(null);
-    }, 100);
-}
-
-// TODO: Add proper error handling middleware
-// TODO: Add 404 handler
-// TODO: Add 500 handler
-
-// Start server
-app.listen(PORT, () => {
-    console.log(`API Entregas running on port ${PORT}`); // TODO: Use logger
-    console.log('TODO: Add health checks');
-    console.log('TODO: Add graceful shutdown');
-    console.log('TODO: Add metrics collection');
+// FIXME: Sem handler para process errors
+process.on('unhandledRejection', function(reason, promise) {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // FIXME: Deveria fazer graceful shutdown
 });
 
-// TODO: Add process error handlers
-// TODO: Add unhandled rejection handlers
-// TODO: Add graceful shutdown logic
+process.on('uncaughtException', function(error) {
+    console.error('Uncaught Exception:', error.message);
+    // FIXME: Deveria fazer graceful shutdown
+    process.exit(1);
+});
