@@ -286,7 +286,7 @@ router.patch('/:id/status', async (req, res) => {
  */
 router.patch('/:id/atribuir', async (req, res) => {
     try {
-        const { veiculo_placa, motorista_id } = req.body;
+        const { veiculo_placa, motorista_id, motorista_nome, veiculo_modelo } = req.body;
         const entrega = await Entrega.findByPk(req.params.id);
 
         if (!entrega) {
@@ -303,6 +303,8 @@ router.patch('/:id/atribuir', async (req, res) => {
 
         entrega.veiculo_placa = veiculo_placa;
         entrega.motorista_id = motorista_id;
+        entrega.motorista_nome = motorista_nome || null;
+        entrega.veiculo_modelo = veiculo_modelo || null;
         entrega.status = 'ATRIBUIDA';
         entrega.data_atualizacao = new Date();
 

@@ -29,6 +29,16 @@ const Entrega = sequelize.define('Entrega', {
         type: DataTypes.BIGINT,
         allowNull: true // FIXME: deveria ser obrigatório quando em trânsito
     },
+    motorista_nome: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+        // FIXME: campo denormalizado - deveria vir do api-frotas
+    },
+    veiculo_modelo: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+        // FIXME: campo denormalizado - deveria vir do api-frotas
+    },
     origem_endereco: {
         type: DataTypes.STRING(255),
         allowNull: false
