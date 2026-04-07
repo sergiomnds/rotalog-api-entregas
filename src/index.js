@@ -50,6 +50,7 @@ app.use(function(req, res, next) {
 });
 
 // Routes
+const authRoutes = require('./routes/auth');
 const entregasRoutes = require('./routes/entregas');
 const rastreamentoRoutes = require('./routes/rastreamento');
 const frotasRoutes = require('./routes/frotas');
@@ -72,6 +73,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Mount routes
+app.use('/api/auth', authRoutes);
 app.use('/api/entregas', authMiddleware, entregasRoutes);
 app.use('/api/rastreamento', rastreamentoRoutes); // FIXME: sem auth no rastreamento
 app.use('/api/frotas', authMiddleware, frotasRoutes);
@@ -99,6 +101,7 @@ async function startServer() {
             console.log('=================================');
             console.log('');
             console.log('Endpoints disponíveis:');
+            console.log('  POST   /api/auth/login');
             console.log('  GET    /api/health');
             console.log('  GET    /api/entregas');
             console.log('  GET    /api/entregas/stats');
