@@ -17,6 +17,11 @@ const dotenv = require('dotenv');
 // Load environment variables
 dotenv.config();
 
+// Falha na inicialização se a configuração de autenticação for inválida
+require('./config/env').getJwtConfig();
+
+const logger = require('./config/logger');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -45,7 +50,7 @@ app.use(express.json());
 
 // FIXME: Log de request manual - deveria usar morgan ou similar
 app.use(function(req, res, next) {
-    console.log('[' + new Date().toISOString() + '] ' + req.method + ' ' + req.url);
+    logger.info({ method: req.method, url: req.url }, 'request');
     next();
 });
 
@@ -73,7 +78,7 @@ app.get('/api/health', (req, res) => {
 
 // Mount routes
 app.use('/api/entregas', authMiddleware, entregasRoutes);
-app.use('/api/rastreamento', rastreamentoRoutes); // FIXME: sem auth no rastreamento
+app.use('/api/rastreamento', authMiddleware, rastreamentoRoutes);
 app.use('/api/frotas', authMiddleware, frotasRoutes);
 
 // Error handling

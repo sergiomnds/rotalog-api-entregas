@@ -1,51 +1,51 @@
-/**
- * Auth Middleware - Copied from StackOverflow (2020)
- * 
- * FIXME: JWT secret hardcoded
- * FIXME: Sem validação real do token
- * FIXME: Sem refresh token
- * FIXME: Sem role-based access control
- * FIXME: Bypass em desenvolvimento
- */
+const jwt = require('jsonwebtoken');
+const { getJwtConfig } = require('../config/env');
 
-// FIXME: Hardcoded secret
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-that-should-not-be-hardcoded';
+const ALGORITMOS_PERMITIDOS = ['HS256'];
+const BEARER_REGEX = /^Bearer (\S+)$/;
+
+function negar(res, motivo) {
+    // O motivo detalhado fica só no log; o cliente recebe uma resposta genérica.
+    console.warn('[AUTH] Acesso negado: ' + motivo);
+    return res.status(401).json({ error: 'Não autorizado' });
+}
 
 function authMiddleware(req, res, next) {
-    // FIXME: Bypass total em desenvolvimento
-    if (process.env.NODE_ENV !== 'production') {
-        console.log('[AUTH] Bypass em desenvolvimento'); // FIXME: usar logger
-        return next();
+    let config;
+    try {
+        config = getJwtConfig();
+    } catch (error) {
+        console.error('[AUTH] ' + error.message);
+        return res.status(500).json({ error: 'Erro interno' });
     }
 
-    var authHeader = req.headers.authorization;
-
+    const authHeader = req.headers.authorization;
     if (!authHeader) {
-        return res.status(401).json({ error: 'Token não fornecido' });
+        return negar(res, 'token não fornecido');
     }
 
-    // FIXME: Apenas verifica se header existe, não valida o token
-    var parts = authHeader.split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
-        return res.status(401).json({ error: 'Token mal formatado' });
+    const match = BEARER_REGEX.exec(authHeader);
+    if (!match) {
+        return negar(res, 'header Authorization mal formatado');
     }
 
-    var token = parts[1];
-
-    // FIXME: "Validação" fake - apenas verifica se não está vazio
-    if (!token || token.length < 10) {
-        return res.status(401).json({ error: 'Token inválido' });
+    let payload;
+    try {
+        payload = jwt.verify(match[1], config.secret, {
+            algorithms: ALGORITMOS_PERMITIDOS,
+            issuer: config.issuer,
+            audience: config.audience
+        });
+    } catch (error) {
+        return negar(res, error.name + ': ' + error.message);
     }
 
-    // FIXME: Sem decodificação real do JWT
-    // FIXME: Sem verificação de expiração
-    // FIXME: Sem verificação de assinatura
-    console.log('[AUTH] Token aceito (sem validação real)'); // FIXME: usar logger
+    if (!payload.sub || typeof payload.role !== 'string' || !payload.role) {
+        return negar(res, 'payload sem sub ou role');
+    }
 
-    // FIXME: User fake
-    req.user = { id: 1, nome: 'Admin', role: 'admin' };
-
-    next();
+    req.user = { id: payload.sub, nome: payload.nome, role: payload.role };
+    return next();
 }
 
 module.exports = authMiddleware;

@@ -1,24 +1,18 @@
-/**
- * Error Handler Middleware
- * 
- * FIXME: Expõe stack trace em todos os ambientes
- * FIXME: Sem logging estruturado
- * FIXME: Sem métricas de erro
- */
+const logger = require('../config/logger');
 
 function errorHandler(err, req, res, next) {
-    console.error('=== ERRO NÃO TRATADO ==='); // FIXME: usar logger
-    console.error('URL:', req.method, req.url);
-    console.error('Body:', JSON.stringify(req.body)); // FIXME: pode logar dados sensíveis
-    console.error('Erro:', err.message);
-    console.error('Stack:', err.stack); // FIXME: stack trace no log
-    console.error('========================');
+    const status = err.status || 500;
 
-    // FIXME: Expondo stack trace para o cliente
-    res.status(err.status || 500).json({
-        error: err.message || 'Erro interno do servidor',
-        stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined // FIXME: deveria nunca expor
-    });
+    logger.error({ err, method: req.method, url: req.url, status }, 'Erro ao processar requisição');
+
+    if (res.headersSent) {
+        return next(err);
+    }
+
+    const corpo = { error: err.expose ? err.message : 'Erro interno do servidor' };
+    if (err.campos) corpo.campos = err.campos;
+
+    return res.status(status).json(corpo);
 }
 
 function notFoundHandler(req, res) {
